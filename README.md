@@ -27,7 +27,7 @@ Ubuntu/Linux: sudo apt-get install ncbi-blast+
 Windows: Download and run the .exe from NCBI's FTP site --> https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
 
 - Download the Swiss-Prot file from Uniprot --> https://www.uniprot.org/help/downloads
-- Unzip the file in the working directory it should have created swissprot.fasta
+- Unzip the file in the working directory, it should have created swissprot.fasta
 - While in the same directory as swissprot.fasta, run the command
 
 ```bash
