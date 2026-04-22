@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EcoCyc circuit viewer</title>
+    <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+    <style>
+      :root {
+        color-scheme: dark light;
+        --bg: #0f1419;
+        --panel: #1a2332;
+        --text: #e8eef7;
+        --muted: #9aa7bd;
+        --accent: #5b8def;
+        --border: #2a3648;
+        --input-bg: #111c2b;
+        --sidebar-w: 280px;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        overflow: hidden;
+        min-height: 100vh;
+      }
+      header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      h1 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+      .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      label.file { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--muted); }
+      button, input[type="file"]::file-selector-button {
+        font: inherit; cursor: pointer;
+        border: 1px solid var(--border); background: #243044; color: var(--text);
+        border-radius: 8px; padding: 8px 12px; transition: border-color 0.15s;
+      }
+      button:hover, input[type="file"]::file-selector-button:hover { border-color: var(--accent); }
+      .main-area { display: flex; min-height: 0; overflow: hidden; }
+      #sidebar {
+        width: var(--sidebar-w); min-width: var(--sidebar-w);
+        background: var(--panel); border-right: 1px solid var(--border);
+        display: flex; flex-direction: column; padding: 14px 14px 10px;
+        gap: 10px; overflow-y: auto;
+        transition: width 0.2s, min-width 0.2s, padding 0.2s;
+      }
+      #sidebar.collapsed { width: 0; min-width: 0; padding: 0; overflow: hidden; }
+      .sidebar-title {
+        font-size: 0.78rem; font-weight: 600; letter-spacing: 0.05em;
+        text-transform: uppercase; color: var(--muted); margin: 0 0 2px; white-space: nowrap;
+      }
+      #gene-input {
+        width: 100%; min-height: 110px; resize: vertical;
+        background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px;
+        color: var(--text); font: 0.88rem/1.5 monospace; padding: 8px 10px;
+        outline: none; transition: border-color 0.15s;
+      }
+      #gene-input:focus { border-color: var(--accent); }
+      #gene-input::placeholder { color: #4a5a72; }
+      .blast-id-row { margin-top: 8px; }
+      .blast-id-row label { display: block; font-size: 0.72rem; color: #adb5bd; margin-bottom: 4px; }
+      #blast-id-slider { width: 100%; max-width: 220px; vertical-align: middle; }
+      #blast-id-val { font-family: monospace; color: #69db7c; margin-left: 6px; }
+      #stringdb-score-slider { width: 100%; max-width: 220px; vertical-align: middle; }
+      #stringdb-score-val { font-family: monospace; color: #69db7c; margin-left: 6px; }
+      #seq-input {
+        width: 100%; min-height: 72px; resize: vertical;
+        background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px;
+        color: var(--text); font: 0.8rem/1.45 monospace; padding: 7px 9px;
+        outline: none; transition: border-color 0.15s;
+      }
+      #seq-input:focus { border-color: var(--accent); }
+      #seq-notes {
+        font-size: 0.68rem; color: var(--muted); max-height: 100px; overflow-y: auto;
+        background: #0f1a28; border-radius: 6px; padding: 6px 8px; margin: 0;
+        white-space: pre-wrap; word-break: break-word;
+      }
+      #analyze-seq-btn {
+        width: 100%; background: #2b4a2b; border-color: #3d6a3d;
+        padding: 8px 10px; font-size: 0.82rem; border-radius: 8px;
+      }
+      #analyze-seq-btn:hover { border-color: #69db7c; }
+      #analyze-seq-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .hint { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
+      .hint code { background: #0f1a28; border-radius: 4px; padding: 1px 5px; font-size: 0.7rem; }
+      #run-btn {
+        width: 100%; background: #1e3a6e; border-color: #3a5ea0;
+        padding: 9px 12px; font-size: 0.9rem; border-radius: 8px;
+      }
+      #run-btn:hover { background: #254a8a; border-color: var(--accent); }
+      #run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .spinner {
+        display: inline-block; width: 12px; height: 12px;
+        border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+        border-radius: 50%; animation: spin 0.7s linear infinite;
+        vertical-align: middle; margin-right: 6px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #status-msg { font-size: 0.75rem; color: var(--muted); min-height: 1.2em; }
+      #status-msg.ok   { color: #69db7c; }
+      #status-msg.err  { color: #ff8a8a; }
+      #status-msg.info { color: var(--accent); }
+      .divider { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
+      #resolved-area { display: none; }
+      .resolved-list { list-style: none; margin: 4px 0 0; padding: 0; font-size: 0.72rem; display: flex; flex-direction: column; gap: 3px; }
+      .resolved-list li { background: #0f1a28; border-radius: 5px; padding: 3px 7px; color: #69db7c; font-family: monospace; }
+      .resolved-list li.err-item { color: #ff8a8a; }
+      #api-url-input {
+        width: 100%; background: var(--input-bg); border: 1px solid var(--border);
+        border-radius: 6px; color: var(--text); font: 0.78rem/1.4 monospace;
+        padding: 5px 8px; outline: none;
+      }
+      #api-url-input:focus { border-color: var(--accent); }
+      #network {
+        flex: 1; min-height: 0; min-width: 0; position: relative;
+        background: radial-gradient(1200px 600px at 30% 20%, #152238, var(--bg));
+      }
+      aside {
+        border-top: 1px solid var(--border); background: var(--panel);
+        padding: 6px 12px 8px; font-size: 0.78rem; color: var(--muted);
+        line-height: 1.35; max-height: 20vh; overflow: auto;
+      }
+      .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 4px; }
+      .swatch { display: inline-flex; align-items: center; gap: 6px; }
+      .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+      .err-footer { color: #ff8a8a; margin-top: 6px; }
+
+      /* ── Not-found toast ── */
+      #notif-box {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+        max-width: 320px;
+        background: #1a2332;
+        border: 1px solid #6b3a3a;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 0.76rem;
+        color: #e8eef7;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        z-index: 100;
+        display: none;
+        line-height: 1.5;
+      }
+      #notif-box.visible { display: block; }
+      #notif-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      #notif-title {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #ff8a8a;
+        letter-spacing: 0.03em;
+      }
+      #notif-close {
+        background: none;
+        border: none;
+        color: #9aa7bd;
+        font-size: 1rem;
+        cursor: pointer;
+        padding: 0 0 0 8px;
+        line-height: 1;
+      }
+      #notif-close:hover { color: #e8eef7; }
+      #notif-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        max-height: 180px;
+        overflow-y: auto;
+      }
+      #notif-list li {
+        background: #0f1a28;
+        border-radius: 5px;
+        padding: 3px 8px;
+        font-family: monospace;
+        font-size: 0.72rem;
+        color: #ff8a8a;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>EcoCyc genetic circuit viewer</h1>
+      <div class="controls">
+        <button id="toggle-sidebar" type="button">&#9776; Genes</button>
+        <button id="fit" type="button">Fit view</button>
+      </div>
+    </header>
+
+    <div class="main-area">
+      <div id="sidebar">
+        <p class="sidebar-title">Build graph</p>
+        <label class="hint" for="gene-input">Gene names or EcoCyc IDs, one per line:</label>
+        <textarea id="gene-input" placeholder="lacI&#10;lacZ&#10;crp&#10;EG10525"></textarea>
+        <button id="run-btn" type="button">Build graph</button>
+        <div id="status-msg"></div>
+
+        <hr class="divider" />
+        <p class="sidebar-title">DNA / FASTA (Autogene)</p>
+        <label class="hint" for="seq-input">Paste DNA or upload a FASTA file. ORFs are scanned; gene names come from BLAST vs SwissProt only if the best hit meets the <strong>identity cutoff</strong> (default 75%, as in <code>Protein.py</code>). If <code>blastp.exe</code> is not installed, the server uses <strong>NCBI web BLASTp</strong> (slower, needs internet; optional <code>NCBI_EMAIL</code>). For local/offline runs: install <a href="https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/" target="_blank" rel="noopener">NCBI BLAST+</a>, set <code>BLASTP_EXE</code>, run <code>makeblastdb</code> on UniProt SwissProt FASTA, set <code>SWISSPROT_DB</code> to the DB prefix (<code>*.pin</code>, not <code>*.pdb</code>).</label>
+        <textarea id="seq-input" placeholder=">my_fragment&#10;ATGAAATGA&#10;…or raw ACGT…"></textarea>
+        <label class="file hint" style="margin-top:4px">
+          FASTA file <input id="seq-file" type="file" accept=".fa,.fas,.fasta,.fna,.txt,text/plain" />
+        </label>
+        <div class="blast-id-row">
+          <label for="blast-id-slider">BLAST min. identity (%): <span id="blast-id-val">75</span></label>
+          <input type="range" id="blast-id-slider" min="30" max="100" step="1" value="75" />
+        </div>
+        <button id="analyze-seq-btn" type="button">Import sequence → gene list</button>
+        <pre id="seq-notes" hidden></pre>
+
+        <div id="resolved-area">
+          <p class="hint" style="margin:0">Resolved genes:</p>
+          <ul class="resolved-list" id="resolved-list"></ul>
+        </div>
+
+        <hr class="divider" />
+        <p class="sidebar-title" style="margin-top:4px">API server</p>
+        <p class="hint">Backend URL (default: local Flask server):</p>
+        <input id="api-url-input" type="text" value="http://127.0.0.1:5000" spellcheck="false" />
+        <div class="blast-id-row" style="margin-top:8px">
+          <label for="stringdb-enable" style="display:flex; align-items:center; gap:8px; font-size:0.76rem; color:var(--muted)">
+            <input id="stringdb-enable" type="checkbox" />
+            Include STRING functional associations
+          </label>
+        </div>
+        <div class="blast-id-row" style="margin-top:2px">
+          <label for="stringdb-score-slider">STRING min. score (0-1000): <span id="stringdb-score-val">700</span></label>
+          <input type="range" id="stringdb-score-slider" min="0" max="1000" step="10" value="700" />
+        </div>
+        <p class="hint">
+          Start the backend once from your project root:<br><br>
+          <code>pip install flask flask-cors networkx biopython</code> (Biopython parses BLAST XML in <code>Autogene.py</code>)<br><br>
+          <code>python circuit_viewer/server.py</code>
+        </p>
+        <hr class="divider" />
+        <p class="hint">Or load a pre-built <code>circuit_data.json</code> via the header buttons.</p>
+      </div>
+
+      <div id="network" style="position:relative">
+        <div id="network-inner" style="width:100%;height:100%;position:absolute;top:0;left:0;"></div>
+        <div id="notif-box">
+          <div id="notif-header">
+            <span id="notif-title">Genes not found in database</span>
+            <button id="notif-close" title="Dismiss">&times;</button>
+          </div>
+          <ul id="notif-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="legend" id="legend"></div>
+      <div class="err-footer" id="err" hidden></div>
+    </aside>
+
+    <script>
+      const INTERACTION_COLORS = {
+        creates:   "#69db7c",
+        inhibits:  "#ff6b6b",
+        activates: "#4dabf7",
+        regulates: "#ced4da",
+        stringdb:  "#b197fc",
+      };
+
+      let lastGraphPayload = null;
+
+      (function initBlastIdentitySlider() {
+        const sl = document.getElementById("blast-id-slider");
+        const el = document.getElementById("blast-id-val");
+        if (!sl || !el) return;
+        try {
+          const s = localStorage.getItem("autogene_blast_min_identity");
+          if (s != null && s !== "") {
+            const n = Number(s);
+            if (!Number.isNaN(n)) sl.value = String(Math.min(100, Math.max(30, Math.round(n))));
+          }
+        } catch (_) {}
+        el.textContent = sl.value;
+        sl.addEventListener("input", () => {
+          el.textContent = sl.value;
+          try { localStorage.setItem("autogene_blast_min_identity", sl.value); } catch (_) {}
+        });
+      })();
+
+      function getBlastMinIdentity() {
+        const sl = document.getElementById("blast-id-slider");
+        if (!sl) return 75;
+        const n = Number(sl.value);
+        return Number.isFinite(n) ? n : 75;
+      }
+
+      (function initStringDbControls() {
+        const en = document.getElementById("stringdb-enable");
+        const sl = document.getElementById("stringdb-score-slider");
+        const val = document.getElementById("stringdb-score-val");
+        if (!en || !sl || !val) return;
+        try {
+          const enSaved = localStorage.getItem("autogene_stringdb_enabled");
+          if (enSaved != null) en.checked = enSaved === "1";
+        } catch (_) {}
+        try {
+          const s = localStorage.getItem("autogene_stringdb_min_score");
+          if (s != null && s !== "") {
+            const n = Number(s);
+            if (!Number.isNaN(n)) sl.value = String(Math.min(1000, Math.max(0, Math.round(n / 10) * 10)));
+          }
+        } catch (_) {}
+        val.textContent = sl.value;
+        en.addEventListener("change", () => {
+          try { localStorage.setItem("autogene_stringdb_enabled", en.checked ? "1" : "0"); } catch (_) {}
+        });
+        sl.addEventListener("input", () => {
+          val.textContent = sl.value;
+          try { localStorage.setItem("autogene_stringdb_min_score", sl.value); } catch (_) {}
+        });
+      })();
+
+      function getStringDbOptions() {
+        const en = document.getElementById("stringdb-enable");
+        const sl = document.getElementById("stringdb-score-slider");
+        const enabled = !!(en && en.checked);
+        const raw = sl ? Number(sl.value) : 700;
+        const min = Number.isFinite(raw) ? Math.max(0, Math.min(1000, Math.round(raw))) : 700;
+        return {
+          include_stringdb: enabled,
+          stringdb_min_score: min,
+          stringdb_species: 511145,
+        };
+      }
+
+      function ecocycObjectUrl(orgid, frameId) {
+        return `https://ecocyc.org/gene?orgid=${encodeURIComponent(orgid||"ECOLI")}&id=${encodeURIComponent(frameId)}`;
+      }
+
+      function getApiBase() {
+        return (document.getElementById("api-url-input").value || "http://127.0.0.1:5000").replace(/\/$/, "");
+      }
+
+      function parseGeneTokens(text) {
+        return String(text || "")
+          .trim()
+          .split(/[\n,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      /**
+       * Strip organism / K-12 filters from UniProt web search links. Decodes the full URL so
+       * encoded ``organism_id%3A83333`` is caught even if ``URLSearchParams`` behaves oddly.
+       */
+      function normalizeUniProtExternalUrl(url) {
+        if (!url || typeof url !== "string") return url;
+        if (!/uniprot\.org/i.test(url)) return url;
+        try {
+          let dec = url;
+          try {
+            dec = decodeURIComponent(url.replace(/\+/g, " "));
+          } catch (_) {}
+          const gm = dec.match(/\(gene:([^)]+)\)/i);
+          if (!gm) return url;
+          const sym = gm[1].trim();
+          const low = dec.toLowerCase();
+          const hasQuery = low.includes("query=") || url.toLowerCase().includes("query=");
+          if (!hasQuery) return url;
+          const bad =
+            low.includes("organism_id") ||
+            low.includes("taxonomy_id") ||
+            dec.includes("83333");
+          if (!bad) return url;
+          const newQ = `(gene:${sym}) AND (reviewed:true)`;
+          return "https://www.uniprot.org/uniprotkb?query=" + encodeURIComponent(newQ);
+        } catch (_) {
+          return url;
+        }
+      }
+
+      function buildNodeTooltip(n) {
+        const lines = [String(n.id), n.label ? String(n.label) : ""];
+        const uniFromUrl = n.external_url && /uniprot\.org/i.test(String(n.external_url));
+        const inc = n.incoming;
+        const hasIncoming =
+          inc &&
+          ((inc.activates && inc.activates.length) ||
+            (inc.inhibits && inc.inhibits.length) ||
+            (inc.regulates && inc.regulates.length));
+
+        function appendEcoCycIncoming() {
+          if (!hasIncoming) return;
+          if (inc.activates && inc.activates.length) {
+            lines.push("", "Activated by:");
+            inc.activates.forEach((x) => lines.push("  • " + x));
+          }
+          if (inc.inhibits && inc.inhibits.length) {
+            lines.push("", "Inhibited by:");
+            inc.inhibits.forEach((x) => lines.push("  • " + x));
+          }
+          if (inc.regulates && inc.regulates.length) {
+            lines.push("", "Other regulation from:");
+            inc.regulates.forEach((x) => lines.push("  • " + x));
+          }
+        }
+
+        // EcoCyc graph nodes may still get a UniProt ``external_url`` (gene-links.dat). Do not
+        // treat that as UniProt-only: show EcoCyc incoming regulation when the API marks ecocyc.
+        if (n.source === "ecocyc") {
+          appendEcoCycIncoming();
+          lines.push(
+            "",
+            uniFromUrl
+              ? "Click: open UniProt entry (EcoCyc gene; accession link)"
+              : "Click: open EcoCyc in a new tab"
+          );
+          return lines.join("\n");
+        }
+
+        if (n.source === "uniprot" || uniFromUrl) {
+          lines.push("", "Click: open UniProt in a new tab");
+          return lines.join("\n");
+        }
+
+        if (hasIncoming) {
+          appendEcoCycIncoming();
+          lines.push("", "Click: open EcoCyc in a new tab");
+          return lines.join("\n");
+        }
+
+        lines.push("", "Click: open EcoCyc in a new tab");
+        return lines.join("\n");
+      }
+
+      function onNetworkNodeClick(p) {
+        if (!p.nodes.length) return;
+        const id = p.nodes[0];
+        const node = (lastGraphPayload && lastGraphPayload.nodes || []).find((x) => x.id === id);
+        if (node && node.external_url) {
+          window.open(normalizeUniProtExternalUrl(node.external_url), "_blank", "noopener,noreferrer");
+          return;
+        }
+        window.open(ecocycObjectUrl(lastOrgid, id), "_blank", "noopener,noreferrer");
+      }
+      function kindStyle(kind) {
+        if (kind === "gene")    return { shape:"box",     color:{ background:"#364fc7", border:"#91a7ff" } };
+        if (kind === "protein") return { shape:"ellipse", color:{ background:"#d9480f", border:"#ffc078" } };
+        return                         { shape:"dot",     color:{ background:"#495057", border:"#adb5bd" } };
+      }
+      function buildLegend() {
+        const rows = [["#364fc7","Gene"],["#d9480f","Protein / other"],...Object.entries(INTERACTION_COLORS).map(([k,c])=>[c,k])];
+        document.getElementById("legend").innerHTML = rows.map(([c,t])=>`<span class="swatch"><span class="dot" style="background:${c}"></span>${t}</span>`).join("");
+      }
+      function setErr(msg) {
+        const n = document.getElementById("err");
+        if (!msg) { n.hidden=true; n.textContent=""; return; }
+        n.hidden=false; n.textContent=msg;
+      }
+      function setStatus(msg, type="") {
+        const el = document.getElementById("status-msg");
+        el.innerHTML = msg; el.className = type;
+      }
+
+      function toVisData(payload) {
+        const orgid = payload.orgid || "ECOLI";
+        const nodes = new vis.DataSet(
+          (payload.nodes||[]).map(n => ({
+            id: n.id,
+            label: n.label || n.id,
+            title: buildNodeTooltip(n),
+            ...kindStyle(n.kind || ""),
+          }))
+        );
+        const edges = new vis.DataSet(
+          (payload.edges||[]).map((e,idx) => {
+            const col = INTERACTION_COLORS[e.interaction||""] || "#868e96";
+            const isStringDb = e.interaction === "stringdb" || e.source === "stringdb";
+            const confTxt = (e.confidence != null && Number.isFinite(Number(e.confidence)))
+              ? ` (score ${Math.round(Number(e.confidence) * 1000)}/1000)`
+              : "";
+            const title = isStringDb ? `STRING association${confTxt}` : (e.interaction||"");
+            return { id:`e${idx}`, from:e.from, to:e.to, title,
+              color:{ color:col, highlight:"#fff" },
+              dashes: isStringDb,
+              arrows:{ to:{ enabled:true, scaleFactor:0.85 } },
+              smooth:{ type:"dynamic" } };
+          })
+        );
+        return { orgid, nodes, edges };
+      }
+
+      let network = null, lastOrgid="ECOLI", resizeObs = null;
+      const NETWORK_OPTIONS = {
+        physics: {
+          enabled: true,
+          stabilization: { enabled:true, iterations:150, fit:true },
+          barnesHut: { gravitationalConstant:-2200, centralGravity:0.18, springLength:140, springConstant:0.032 },
+        },
+        interaction:{ hover:true, tooltipDelay:120 },
+        nodes:{ font:{ color:"#f8f9fa", size:14 }, margin:10, borderWidth:2 },
+        edges:{ width:2 },
+      };
+
+      function mountGraph(payload) {
+        lastGraphPayload = payload;
+        const container = document.getElementById("network-inner");
+        const { orgid, nodes, edges } = toVisData(payload);
+        lastOrgid = orgid;
+
+        if (resizeObs) { try { resizeObs.disconnect(); } catch(_){} resizeObs=null; }
+
+        if (network) {
+          // Reuse existing network — swap data only, no destroy/recreate
+          network.off("stabilizationIterationsDone");
+          network.setOptions({ physics:{ enabled:true, stabilization:{ enabled:true, iterations:150, fit:true } } });
+          network.setData({ nodes, edges });
+        } else {
+          network = new vis.Network(container, { nodes, edges }, NETWORK_OPTIONS);
+          network.on("click", onNetworkNodeClick);
+        }
+
+        network.once("stabilizationIterationsDone", () => {
+          try { network.setOptions({ physics:{ enabled:false } }); network.fit(); } catch(_){}
+        });
+
+        resizeObs = new ResizeObserver(() => { try { if (network) network.redraw(); } catch(_){} });
+        resizeObs.observe(container);
+        setErr("");
+      }
+
+      async function analyzeSequenceFromApi(text, file) {
+        const base = getApiBase();
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 300000); // ORF + web BLAST can be slow
+        const minId = getBlastMinIdentity();
+        try {
+          let res;
+          if (file) {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("max_orfs", "10");
+            fd.append("min_blast_identity", String(minId));
+            res = await fetch(`${base}/api/analyze-sequence`, {
+              method: "POST",
+              body: fd,
+              signal: controller.signal,
+            });
+          } else {
+            res = await fetch(`${base}/api/analyze-sequence`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sequence: text, max_orfs: 10, min_blast_identity: minId }),
+              signal: controller.signal,
+            });
+          }
+          clearTimeout(tid);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          return data;
+        } catch (e) {
+          clearTimeout(tid);
+          if (e.name === "AbortError") throw new Error("Sequence analysis timed out (try smaller FASTA or local blastp).");
+          throw e;
+        }
+      }
+
+      function applyGraphPayload(payload) {
+        const n = (payload.nodes || []).length;
+        const e = (payload.edges || []).length;
+        const skipped = (payload.errors || []).length;
+        if (n > 0) {
+          try { mountGraph(payload); } catch (me) { console.error("mountGraph error:", me); }
+        }
+        showResolved(payload);
+        showNotif(payload.errors);
+        if (n === 0) {
+          setStatus(`No known genes found. ${skipped} unrecognised — see bottom-right.`, "err");
+        } else {
+          const note = skipped ? ` (${skipped} not found — see bottom-right)` : "";
+          setStatus(`Done — ${n} nodes, ${e} edges.${note}`, "ok");
+        }
+      }
+
+      async function fetchGraph(genes) {
+        const base = getApiBase();
+        const stringdbOpts = getStringDbOptions();
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 180000); // large UniProt graphs can be slow
+        try {
+          const res = await fetch(`${base}/api/graph`, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify({ genes, ...stringdbOpts }),
+            signal: controller.signal,
+          });
+          clearTimeout(tid);
+          if (!res.ok) {
+            const body = await res.json().catch(()=>({}));
+            throw new Error(body.error || `HTTP ${res.status}`);
+          }
+          return res.json();
+        } catch(e) {
+          clearTimeout(tid);
+          if (e.name === "AbortError") throw new Error("Request timed out after 180s. Check the server terminal for where it got stuck.");
+          throw e;
+        }
+      }
+
+      function showResolved(payload) {
+        const area = document.getElementById("resolved-area");
+        const list = document.getElementById("resolved-list");
+        area.style.display = "";
+        list.innerHTML = "";
+        (payload.resolved||[]).forEach(id => {
+          const node = (payload.nodes||[]).find(n=>n.id===id);
+          const label = node ? node.label : id;
+          const li = document.createElement("li");
+          li.textContent = label !== id ? `${label} (${id})` : id;
+          list.appendChild(li);
+        });
+        (payload.errors||[]).forEach(e => {
+          const li = document.createElement("li");
+          li.className = "err-item";
+          li.textContent = `✗ ${e.token}`;
+          list.appendChild(li);
+        });
+      }
+
+      function showNotif(errors) {
+        const box = document.getElementById("notif-box");
+        const ul  = document.getElementById("notif-list");
+        if (!errors || !errors.length) { box.classList.remove("visible"); return; }
+        ul.innerHTML = "";
+        errors.forEach(e => {
+          const li = document.createElement("li");
+          li.textContent = e.token;
+          ul.appendChild(li);
+        });
+        box.classList.add("visible");
+      }
+
+      document.getElementById("notif-close").addEventListener("click", () => {
+        document.getElementById("notif-box").classList.remove("visible");
+      });
+
+      document.getElementById("analyze-seq-btn").addEventListener("click", () => {
+        const ta = document.getElementById("seq-input");
+        const fileEl = document.getElementById("seq-file");
+        const file = fileEl.files && fileEl.files[0];
+        const pasted = (ta.value || "").trim();
+        if (!file && !pasted) {
+          setStatus("Paste DNA / FASTA or choose a .fa file.", "err");
+          return;
+        }
+        const btn = document.getElementById("analyze-seq-btn");
+        const notesEl = document.getElementById("seq-notes");
+        notesEl.hidden = true;
+        btn.disabled = true;
+        btn.textContent = "Analyzing…";
+        setStatus("Running ORF scan (and BLAST if available)…", "info");
+
+        analyzeSequenceFromApi(pasted, file)
+          .then((data) => {
+            const ready = (data.genes_ready_for_graph || []).filter(Boolean);
+            const suggested = (data.suggested_genes || []).filter(Boolean);
+            const toImport = ready.length ? ready : suggested;
+            const genes = toImport.join("\n");
+            if (genes) {
+              const cur = document.getElementById("gene-input").value.trim();
+              document.getElementById("gene-input").value = cur
+                ? cur + "\n" + genes
+                : genes;
+            }
+            const lines = [];
+            (data.notes || []).forEach((n) => lines.push(n));
+            (data.plasmid_backbone_labels || []).forEach((lab) => {
+              lines.push(`  ${lab}`);
+            });
+            (data.resolved_seeds || []).forEach((r) => {
+              const id = r.graph_seed_id || r.ecocyc_id || r.uniprot_accession || "";
+              lines.push(`  seed ${r.token} -> ${r.source} ${id}`);
+            });
+            (data.resolution_errors || []).forEach((e) => {
+              lines.push(`  not resolved: ${e.token} (${e.error})`);
+            });
+            lines.push(`ORFs returned: ${(data.orfs || []).length}`);
+            (data.orfs || []).slice(0, 6).forEach((o) => {
+              const g = o.blast_gene ? ` → ${o.blast_gene}` : "";
+              lines.push(`  ${o.record_id} frame ${o.frame} len ${o.length_aa}${g}`);
+            });
+            if ((data.orfs || []).length > 6) lines.push("  …");
+            notesEl.textContent = lines.join("\n");
+            notesEl.hidden = false;
+            const nReady = ready.length;
+            const nBlast = suggested.length;
+            let msg;
+            let st;
+            const geneTokens = parseGeneTokens(document.getElementById("gene-input").value);
+            if (toImport.length && geneTokens.length) {
+              setStatus("Sequence imported. Building graph…", "info");
+              document.getElementById("notif-box").classList.remove("visible");
+              return fetchGraph(geneTokens)
+                .then(applyGraphPayload)
+                .catch((err) => {
+                  setErr("Graph API: " + err.message);
+                  setStatus('Genes are in the list; graph build failed — click "Build graph" to retry.', "err");
+                });
+            }
+            if (nReady) {
+              if ((data.plasmid_hint_genes || []).length) {
+                msg = `Imported ${nReady} pBR322 backbone protein gene(s) (bla, tetA). Add ori manually if needed. Click “Build graph”.`;
+              } else {
+                msg = `Imported ${nReady} graph-ready gene(s) (EcoCyc/UniProt resolved from BLAST). Click “Build graph”.`;
+              }
+              st = "ok";
+            } else if (nBlast) {
+              msg = `${nBlast} BLAST name(s); none resolved to EcoCyc/UniProt — see notes. You can edit the list or try other symbols.`;
+              st = "info";
+            } else {
+              msg = "No gene names from BLAST; check notes below. You can still edit the gene list manually.";
+              st = "info";
+            }
+            setStatus(msg, st);
+          })
+          .catch((err) => {
+            setStatus("", "");
+            setErr("Sequence API: " + err.message);
+          })
+          .finally(() => {
+            btn.disabled = false;
+            btn.textContent = "Import sequence → gene list";
+          });
+      });
+
+      document.getElementById("run-btn").addEventListener("click", () => {
+        const raw = document.getElementById("gene-input").value.trim();
+        if (!raw) { setStatus("Enter at least one gene name.", "err"); return; }
+        const genes = parseGeneTokens(raw);
+        if (!genes.length) { setStatus("No valid gene names found.", "err"); return; }
+
+        const btn = document.getElementById("run-btn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>Querying EcoCyc…';
+        document.getElementById("resolved-area").style.display = "none";
+        document.getElementById("notif-box").classList.remove("visible");
+        setStatus("Querying EcoCyc database…", "info");
+
+        function resetBtn() {
+          btn.disabled = false;
+          btn.textContent = "Build graph";
+        }
+
+        fetchGraph(genes).then(applyGraphPayload).catch(function(err) {
+          setStatus("", "");
+          setErr("API error: " + err.message + " — make sure the server is running: python circuit_viewer/server.py");
+        }).finally(function() {
+          resetBtn();
+        });
+      });
+
+      document.getElementById("fit").addEventListener("click", () => { if (network) network.fit({ animation:true }); });
+      document.getElementById("toggle-sidebar").addEventListener("click", () => {
+        document.getElementById("sidebar").classList.toggle("collapsed");
+        if (network) setTimeout(() => network.redraw(), 220);
+      });
+
+      buildLegend();
+    </script>
+  </body>
+</html>
