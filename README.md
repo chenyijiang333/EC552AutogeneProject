@@ -34,6 +34,9 @@ Windows: Download and run the .exe from NCBI's FTP site --> https://ftp.ncbi.nlm
 makeblastdb -in swissprot.fasta -dbtype prot -out swissprot
 ````
 
+- Request Ecocyc for their database here -> https://biocyc.org/download.shtml
+- the folder containing the information to the home directory in which you are working in
+
 ## 2) Start the Web Server
 
 From the project root:
