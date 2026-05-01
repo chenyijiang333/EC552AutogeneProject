@@ -1,0 +1,67 @@
+{
+  "orgid": "ECOLI",
+  "nodes": [
+    {
+      "id": "Gene:traI",
+      "label": "traI",
+      "kind": "gene"
+    },
+    {
+      "id": "UniProt:P14565",
+      "label": "Multifunctional conjugation protein TraI",
+      "kind": "protein"
+    },
+    {
+      "id": "Gene:traG",
+      "label": "traG",
+      "kind": "gene"
+    },
+    {
+      "id": "UniProt:P33790",
+      "label": "Protein TraG",
+      "kind": "protein"
+    },
+    {
+      "id": "Gene:traC",
+      "label": "traC",
+      "kind": "gene"
+    },
+    {
+      "id": "UniProt:P18004",
+      "label": "Protein TraC",
+      "kind": "protein"
+    },
+    {
+      "id": "Gene:traD",
+      "label": "traD",
+      "kind": "gene"
+    },
+    {
+      "id": "UniProt:P09130",
+      "label": "Coupling protein TraD",
+      "kind": "protein"
+    }
+  ],
+  "edges": [
+    {
+      "from": "Gene:traI",
+      "to": "UniProt:P14565",
+      "interaction": "creates"
+    },
+    {
+      "from": "Gene:traG",
+      "to": "UniProt:P33790",
+      "interaction": "creates"
+    },
+    {
+      "from": "Gene:traC",
+      "to": "UniProt:P18004",
+      "interaction": "creates"
+    },
+    {
+      "from": "Gene:traD",
+      "to": "UniProt:P09130",
+      "interaction": "creates"
+    }
+  ]
+}
